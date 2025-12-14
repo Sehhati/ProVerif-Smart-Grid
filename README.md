@@ -1,0 +1,1 @@
+Welcome to the Smart-Grid repository, which hosts ProVerif-based automated security verification scripts developed for a dedicated key management protocol tailored to smart grid environments. The protocol includes fully specified process definitions for its core entities: the Trusted Authority, the Energy Provider, and the Smart Meter.
