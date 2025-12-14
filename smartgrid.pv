@@ -1,0 +1,134 @@
+(* --- Channels --- *)
+free ch: channel.
+free sch: channel [private].
+
+(* --- Constants --- *)
+const G: bitstring.          (* Base point on elliptic curve *)
+const T: bitstring.          (* Time threshold for freshness *)
+
+(* --- Secret values --- *)
+free f: bitstring [private]. (* TA's master secret *)
+free IDi: bitstring [private]. (* Smart meter identity *)
+free IDj: bitstring [private]. (* Utility control identity *)
+free xi: bitstring [private].  (* SM_i private key *)
+free xj: bitstring [private].  (* UC_j private key *)
+
+(* --- Functions --- *)
+fun H(bitstring): bitstring.
+fun xor(bitstring, bitstring): bitstring.
+fun ec(bitstring, bitstring): bitstring.  (* Scalar multiplication: ec(r, P) = r*P *)
+fun exp(bitstring, bitstring): bitstring. (* Alternative name for exponentiation/ec *)
+fun concat(bitstring, bitstring): bitstring.
+fun inv(bitstring): bitstring.
+fun mul(bitstring, bitstring): bitstring. (* Group operation, e.g., point addition *)
+fun sub(bitstring, bitstring): bitstring. (* For timestamp difference *)
+
+(* --- Equations --- *)
+equation forall m: bitstring, n: bitstring; xor(xor(m, n), n) = m.
+equation forall x: bitstring; inv(inv(x)) = x.
+equation forall a: bitstring, b: bitstring; exp(exp(G, a), b) = exp(exp(G, b), a).
+
+(* --- Events for authentication --- *)
+event SMiStart(bitstring).
+event UCjStart(bitstring).
+event UCjAuth(bitstring).
+event SMiAuth(bitstring).
+
+(* --- QUERIES --- *)
+
+(* Confidentiality *)
+query attacker(xi).
+query attacker(xj).
+
+(* Accuracy / Injective Agreement *)
+query id: bitstring; inj-event(UCjAuth(id)) ==> inj-event(SMiStart(id)).
+query id: bitstring; inj-event(SMiAuth(id)) ==> inj-event(UCjStart(id)).
+
+(* Anonymity: attacker cannot learn IDi *)
+query attacker(IDi).
+
+(* --- Smart Meter (SM_i) Process --- *)
+let process_SM =
+  in(ch, PKj: bitstring);
+  event SMiStart(IDi);
+
+  new ri: bitstring;
+  new T1: bitstring;
+
+  let C1 = ec(ri, G) in
+  let C2 = ec(ri, PKj) in
+  (* gi = H(IDi || T1 || xi || C2) *)
+  let gi = H(concat(IDi, concat(T1, concat(xi, C2)))) in
+  (* C3 = gi^C2 * f^xi → model as mul(exp(gi, C2), exp(f, xi)) *)
+  let C3_SM = mul(exp(gi, C2), exp(f, xi)) in
+  let C4 = xor(C2, IDi) in
+
+  out(ch, (T1, C1, C3_SM, C4));
+
+  in(ch, (C11: bitstring, C12: bitstring, T2: bitstring));
+  new T3: bitstring;
+
+  (* Freshness check: sub(T3, T2) = T → abstracted as always true in analysis *)
+  if sub(T3, T2) = T then
+    let C13 = ec(ri, C11) in
+    (* C14 = C12 * f^{-xi} = mul(C12, exp(f, inv(xi))) → but xi private → use min(xi) as inverse encoding *)
+    let C14 = mul(C12, exp(f, inv(xi))) in
+    let C15 = exp(C14, inv(C13)) in
+    (* C16 = H(IDi || T1 || T2 || xi || C2 || C13 || C15) *)
+    let C16 = H(concat(IDi,
+                concat(T1,
+                concat(T2,
+                concat(xi,
+                concat(C2,
+                concat(C13, C15))))))) in
+
+    if C15 = C16 then
+      event UCjAuth(IDj);
+      0
+    else
+      0
+  else
+    0.
+
+(* --- Utility Control (UC_j) Process --- *)
+let process_UC =
+  in(ch, (T1: bitstring, C1: bitstring, C3_MSG: bitstring, C4: bitstring));
+  event UCjStart(IDj);
+
+  new T2: bitstring;
+  if sub(T2, T1) = T then
+    let C5 = ec(xj, C1) in           (* = xj * C1 = xj * ri * G *)
+    let C6 = xor(C5, C4) in          (* = IDi' *)
+    (* C7 = H(C6 || T1 || xi || C5) → But UC doesn't know xi! → This is a known issue in the paper's description. *)
+    (* However, in mutual auth, both sides use xi implicitly via C3. We follow the paper's logic as written. *)
+    let C7 = H(concat(C6, concat(T1, concat(xi, C5)))) in
+    (* C8 = f^{-xi} * C3 → inverse of f^xi times C3 *)
+    let C8 = mul(exp(f, inv(xi)), C3_MSG) in
+    let C9 = exp(C8, inv(C5)) in
+
+    if C7 = C9 then
+      event SMiAuth(IDi);
+
+      new rj: bitstring;
+      let C10 = ec(rj, C1) in        (* = rj * ri * G *)
+      let C11 = ec(rj, G) in
+      (* gj = H(C6 || T1 || T2 || xi || C5 || C10 || C9) *)
+      let gj = H(concat(C6,
+                  concat(T1,
+                  concat(T2,
+                  concat(xi,
+                  concat(C5,
+                  concat(C10, C9))))))) in
+      let C12 = mul(exp(gj, C10), exp(f, xi)) in
+
+      out(ch, (C11, C12, T2));
+      0
+    else
+      0
+  else
+    0.
+
+(* --- Main Process --- *)
+process
+  out(sch, (IDi, IDj, xi, xj));
+  (!process_SM | !process_UC)

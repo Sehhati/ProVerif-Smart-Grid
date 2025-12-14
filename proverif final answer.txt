@@ -1,0 +1,134 @@
+Linear part:
+exp(exp(G,a),b) = exp(exp(G,b),a)
+Completing equations...
+Completed equations:
+exp(exp(G,a),b) = exp(exp(G,b),a)
+Convergent part:
+inv(inv(x)) = x
+xor(xor(m,n),n) = m
+Completing equations...
+Completed equations:
+xor(xor(m,n),n) = m
+inv(inv(x)) = x
+Process 0 (that is, the initial process):
+{1}out(sch, (IDi,IDj,xi,xj));
+(
+    {2}!
+    {3}in(ch, PKj: bitstring);
+    {4}event SMiStart(IDi);
+    {5}new ri: bitstring;
+    {6}new T1: bitstring;
+    {7}let C1: bitstring = ec(ri,G) in
+    {8}let C2: bitstring = ec(ri,PKj) in
+    {9}let gi: bitstring = H(concat(IDi,concat(T1,concat(xi,C2)))) in
+    {10}let C3_SM: bitstring = mul(exp(gi,C2),exp(f,xi)) in
+    {11}let C4: bitstring = xor(C2,IDi) in
+    {12}out(ch, (T1,C1,C3_SM,C4));
+    {13}in(ch, (C11: bitstring,C12: bitstring,T2: bitstring));
+    {14}new T3: bitstring;
+    {15}if (sub(T3,T2) = T) then
+    {16}let C13: bitstring = ec(ri,C11) in
+    {17}let C14: bitstring = mul(C12,exp(f,inv(xi))) in
+    {18}let C15: bitstring = exp(C14,inv(C13)) in
+    {19}let C16: bitstring = H(concat(IDi,concat(T1,concat(T2,concat(xi,concat(C2,concat(C13,C15))))))) in
+    {20}if (C15 = C16) then
+    {21}event UCjAuth(IDj)
+) | (
+    {22}!
+    {23}in(ch, (T1_1: bitstring,C1_1: bitstring,C3_MSG: bitstring,C4_1: bitstring));
+    {24}event UCjStart(IDj);
+    {25}new T2_1: bitstring;
+    {26}if (sub(T2_1,T1_1) = T) then
+    {27}let C5: bitstring = ec(xj,C1_1) in
+    {28}let C6: bitstring = xor(C5,C4_1) in
+    {29}let C7: bitstring = H(concat(C6,concat(T1_1,concat(xi,C5)))) in
+    {30}let C8: bitstring = mul(exp(f,inv(xi)),C3_MSG) in
+    {31}let C9: bitstring = exp(C8,inv(C5)) in
+    {32}if (C7 = C9) then
+    {33}event SMiAuth(IDi);
+    {34}new rj: bitstring;
+    {35}let C10: bitstring = ec(rj,C1_1) in
+    {36}let C11_1: bitstring = ec(rj,G) in
+    {37}let gj: bitstring = H(concat(C6,concat(T1_1,concat(T2_1,concat(xi,concat(C5,concat(C10,C9))))))) in
+    {38}let C12_1: bitstring = mul(exp(gj,C10),exp(f,xi)) in
+    {39}out(ch, (C11_1,C12_1,T2_1))
+)
+
+--  Process 1 (that is, process 0, with let moved downwards):
+{1}out(sch, (IDi,IDj,xi,xj));
+(
+    {2}!
+    {3}in(ch, PKj: bitstring);
+    {4}event SMiStart(IDi);
+    {5}new ri: bitstring;
+    {6}new T1: bitstring;
+    {8}let C2: bitstring = ec(ri,PKj) in
+    {11}let C4: bitstring = xor(C2,IDi) in
+    {9}let gi: bitstring = H(concat(IDi,concat(T1,concat(xi,C2)))) in
+    {10}let C3_SM: bitstring = mul(exp(gi,C2),exp(f,xi)) in
+    {7}let C1: bitstring = ec(ri,G) in
+    {12}out(ch, (T1,C1,C3_SM,C4));
+    {13}in(ch, (C11: bitstring,C12: bitstring,T2: bitstring));
+    {14}new T3: bitstring;
+    {15}if (sub(T3,T2) = T) then
+    {17}let C14: bitstring = mul(C12,exp(f,inv(xi))) in
+    {16}let C13: bitstring = ec(ri,C11) in
+    {18}let C15: bitstring = exp(C14,inv(C13)) in
+    {19}let C16: bitstring = H(concat(IDi,concat(T1,concat(T2,concat(xi,concat(C2,concat(C13,C15))))))) in
+    {20}if (C15 = C16) then
+    {21}event UCjAuth(IDj)
+) | (
+    {22}!
+    {23}in(ch, (T1_1: bitstring,C1_1: bitstring,C3_MSG: bitstring,C4_1: bitstring));
+    {24}event UCjStart(IDj);
+    {25}new T2_1: bitstring;
+    {26}if (sub(T2_1,T1_1) = T) then
+    {30}let C8: bitstring = mul(exp(f,inv(xi)),C3_MSG) in
+    {27}let C5: bitstring = ec(xj,C1_1) in
+    {31}let C9: bitstring = exp(C8,inv(C5)) in
+    {28}let C6: bitstring = xor(C5,C4_1) in
+    {29}let C7: bitstring = H(concat(C6,concat(T1_1,concat(xi,C5)))) in
+    {32}if (C7 = C9) then
+    {33}event SMiAuth(IDi);
+    {34}new rj: bitstring;
+    {35}let C10: bitstring = ec(rj,C1_1) in
+    {37}let gj: bitstring = H(concat(C6,concat(T1_1,concat(T2_1,concat(xi,concat(C5,concat(C10,C9))))))) in
+    {38}let C12_1: bitstring = mul(exp(gj,C10),exp(f,xi)) in
+    {36}let C11_1: bitstring = ec(rj,G) in
+    {39}out(ch, (C11_1,C12_1,T2_1))
+)
+
+-- Query not attacker(xi[]) in process 1.
+Translating the process into Horn clauses...
+Completing...                                                                 
+Starting query not attacker(xi[])                                               RESULT not attacker(xi[]) is true.                                           
+-- Query not attacker(xj[]) in process 1.
+Translating the process into Horn clauses...
+Completing...                                                                 
+Starting query not attacker(xj[])                                               RESULT not attacker(xj[]) is true.                                           
+-- Query inj-event(UCjAuth(id)) ==> inj-event(SMiStart(id)) in process 1.
+Translating the process into Horn clauses...
+Completing...                                                                 
+Starting query inj-event(UCjAuth(id)) ==> inj-event(SMiStart(id))               RESULT inj-event(UCjAuth(id)) ==> inj-event(SMiStart(id)) is true.           
+-- Query inj-event(SMiAuth(id)) ==> inj-event(UCjStart(id)) in process 1.
+Translating the process into Horn clauses...
+Completing...                                                                 
+Starting query inj-event(SMiAuth(id)) ==> inj-event(UCjStart(id))               RESULT inj-event(SMiAuth(id)) ==> inj-event(UCjStart(id)) is true.           
+-- Query not attacker(IDi[]) in process 1.
+Translating the process into Horn clauses...
+Completing...                                                                 
+Starting query not attacker(IDi[])                                              RESULT not attacker(IDi[]) is true.                                          
+
+--------------------------------------------------------------
+Verification summary:
+
+Query not attacker(xi[]) is true.
+
+Query not attacker(xj[]) is true.
+
+Query inj-event(UCjAuth(id)) ==> inj-event(SMiStart(id)) is true.
+
+Query inj-event(SMiAuth(id)) ==> inj-event(UCjStart(id)) is true.
+
+Query not attacker(IDi[]) is true.
+
