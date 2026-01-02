@@ -1,0 +1,383 @@
+(* 
+   Formal verification of the Smart Grid Authentication Protocol
+   Author: Amir Alam Sehhati et al.
+   Protocol: Secure Yet Efficient Authenticated Key Agreement for Smart Grid Environments
+   
+   Combined version: smartgrid_complete.pv
+*)
+
+(* ==================== TYPE DECLARATIONS ==================== *)
+free c : channel.
+
+(* Basic types *)
+type id.
+type nonce.
+type exponent.
+type point.
+type key.
+type hash.
+
+(* ==================== CONSTANTS ==================== *)
+free P : point [private].
+free q : exponent [private].
+free K : exponent [private].
+free P_pub : point.
+free ID_i : id.
+free ID_j : id.
+free success: bitstring.
+free failure: bitstring.
+
+(* ==================== FUNCTIONS ==================== *)
+(* Elliptic curve operations *)
+fun mult(exponent, point) : point.
+fun add(point, point) : point.
+
+(* Hash functions *)
+fun H(bitstring) : hash.
+
+(* XOR operation *)
+fun xor(bitstring, bitstring) : bitstring.
+
+(* Concatenation *)
+fun concat(bitstring, bitstring) : bitstring.
+
+(* Key derivation *)
+fun deriveKey(point, nonce, id, nonce, id) : key.
+
+(* Type conversion functions *)
+fun bitstring_of_id(id) : bitstring.
+fun bitstring_of_point(point) : bitstring.
+fun bitstring_of_nonce(nonce) : bitstring.
+fun bitstring_of_hash(hash) : bitstring.
+fun bitstring_of_key(key) : bitstring.
+fun bitstring_of_exponent(exponent) : bitstring.
+
+fun id_of_bitstring(bitstring) : id.
+fun point_of_bitstring(bitstring) : point.
+fun nonce_of_bitstring(bitstring) : nonce.
+fun hash_of_bitstring(bitstring) : hash.
+fun key_of_bitstring(bitstring) : key.
+fun exponent_of_bitstring(bitstring) : exponent.
+
+(* Hash to exponent conversion *)
+fun hash_to_exp(hash) : exponent.
+
+(* Nonce to exponent conversion *)
+fun nonce_to_exp(nonce) : exponent.
+
+(* Hash to key conversion *)
+fun hash_to_key(hash) : key.
+
+(* Mathematical operations *)
+fun add_exponents(exponent, exponent) : exponent.
+fun mult_exponents(exponent, exponent) : exponent.
+
+(* String manipulation functions *)
+fun get_first_part(bitstring) : bitstring.
+fun get_second_part(bitstring) : bitstring.
+fun get_third_part(bitstring) : bitstring.
+
+(* ==================== EQUATIONAL THEORY ==================== *)
+(* REMOVED all equations with free names - only keep type conversions *)
+equation forall x:id; id_of_bitstring(bitstring_of_id(x)) = x.
+equation forall x:point; point_of_bitstring(bitstring_of_point(x)) = x.
+equation forall x:nonce; nonce_of_bitstring(bitstring_of_nonce(x)) = x.
+equation forall x:hash; hash_of_bitstring(bitstring_of_hash(x)) = x.
+equation forall x:key; key_of_bitstring(bitstring_of_key(x)) = x.
+equation forall x:exponent; exponent_of_bitstring(bitstring_of_exponent(x)) = x.
+
+(* ==================== PRIVATE KEYS ==================== *)
+free SK_i : exponent [private].
+free SK_j : exponent [private].
+
+(* ==================== EVENTS ==================== *)
+event beginSM(id, id).
+event endSM(id, id).
+event beginSP(id, id).
+event endSP(id, id).
+event sessionKeyEstablished(id, id, key).
+event impersonationAttempt(id).
+event replayAttackDetected.
+
+(* ==================== CORE PROCESSES ==================== *)
+
+let TA = 
+  let P_pub_val = mult(K, P) in
+  out(c, P_pub_val);
+  
+  in(c, (x_id: id, x_Ci: point));
+  new r_i: exponent;
+  let R_i = mult(r_i, x_Ci) in
+  let hval_i = H(concat(bitstring_of_id(x_id), bitstring_of_point(R_i))) in
+  let SK_i_reg = mult(r_i, mult(hash_to_exp(hval_i), x_Ci)) in
+  out(c, (x_id, SK_i_reg));
+  
+  in(c, (y_id: id, y_Cj: point));
+  new r_j: exponent;
+  let R_j = mult(r_j, y_Cj) in
+  let hval_j = H(concat(bitstring_of_id(y_id), bitstring_of_point(R_j))) in
+  let SK_j_reg = mult(r_j, mult(hash_to_exp(hval_j), y_Cj)) in
+  out(c, (y_id, SK_j_reg)).
+
+let SmartMeter =
+  new c_i: exponent;
+  let C_i = mult(c_i, P) in
+  out(c, (ID_i, C_i));
+  
+  in(c, (recv_id: id, recv_SK_i: exponent));
+  if recv_id = ID_i then
+    let SK_i_val = recv_SK_i in
+    let P_i = mult(SK_i_val, P) in
+    
+    !(
+      event beginSM(ID_i, ID_j);
+      new D1: nonce;
+      new x: exponent;
+      
+      let sum1 = add_exponents(x, SK_i_val) in
+      let A1 = mult(sum1, P) in
+      
+      let h_input = concat(concat(bitstring_of_nonce(D1), 
+                                  bitstring_of_id(ID_j)), 
+                           bitstring_of_point(A1)) in
+      let h_val = H(h_input) in
+      
+      let m = add(mult(nonce_to_exp(D1), P), 
+                  mult(hash_to_exp(h_val), P_i)) in
+      
+      let P_j = mult(SK_j, P) in
+      let V = mult(add_exponents(nonce_to_exp(D1), 
+                                 mult_exponents(SK_i_val, hash_to_exp(h_val))), 
+                   P_j) in
+      
+      let h2_input = concat(bitstring_of_id(ID_j), bitstring_of_point(V)) in
+      let h2_val = H(h2_input) in
+      let plain1 = concat(concat(bitstring_of_id(ID_i),
+                                 bitstring_of_point(A1)),
+                          bitstring_of_nonce(D1)) in
+      let C1 = xor(bitstring_of_hash(h2_val), plain1) in
+      
+      out(c, (m, C1, h_val));
+      
+      in(c, (recv_hbar: hash, recv_C2: bitstring));
+      
+      let h3_input = concat(bitstring_of_id(ID_i), bitstring_of_point(V)) in
+      let h3_val = H(h3_input) in
+      let decrypted2 = xor(recv_C2, bitstring_of_hash(h3_val)) in
+      let A2 = point_of_bitstring(get_first_part(decrypted2)) in
+      let D2 = nonce_of_bitstring(get_second_part(decrypted2)) in
+      
+      let shared_secret = mult(sum1, A2) in
+      let key_input = concat(concat(concat(concat(
+                           bitstring_of_point(shared_secret),
+                           bitstring_of_nonce(D1)),
+                           bitstring_of_id(ID_i)),
+                           bitstring_of_nonce(D2)),
+                           bitstring_of_id(ID_j)) in
+      let session_key = H(key_input) in
+      
+      let hbar_input = concat(concat(concat(concat(
+                            bitstring_of_nonce(D1),
+                            bitstring_of_id(ID_i)),
+                            bitstring_of_point(A2)),
+                            bitstring_of_hash(session_key)),
+                            bitstring_of_point(V)) in
+      let expected_hbar = H(hbar_input) in
+      
+      if recv_hbar = expected_hbar then (
+        event endSM(ID_i, ID_j);
+        event sessionKeyEstablished(ID_i, ID_j, hash_to_key(session_key));
+        out(c, success)
+      ) else (
+        event impersonationAttempt(ID_j);
+        out(c, failure)
+      )
+    )
+  else
+    out(c, failure).
+
+let ServiceProvider =
+  new c_j: exponent;
+  let C_j = mult(c_j, P) in
+  out(c, (ID_j, C_j));
+  
+  in(c, (recv_id: id, recv_SK_j: exponent));
+  if recv_id = ID_j then
+    let SK_j_val = recv_SK_j in
+    let P_j = mult(SK_j_val, P) in
+    
+    !(
+      in(c, (recv_m: point, recv_C1: bitstring, recv_h: hash));
+      event beginSP(ID_j, ID_i);
+      
+      let V = mult(SK_j_val, recv_m) in
+      
+      let h2_input = concat(bitstring_of_id(ID_j), bitstring_of_point(V)) in
+      let h2_val = H(h2_input) in
+      let decrypted1 = xor(recv_C1, bitstring_of_hash(h2_val)) in
+      let recv_ID_i = id_of_bitstring(get_first_part(decrypted1)) in
+      let A1 = point_of_bitstring(get_second_part(decrypted1)) in
+      let D1 = nonce_of_bitstring(get_third_part(decrypted1)) in
+      
+      let h_input = concat(concat(bitstring_of_nonce(D1), 
+                                  bitstring_of_id(ID_j)), 
+                           bitstring_of_point(A1)) in
+      let expected_h = H(h_input) in
+      
+      if recv_h = expected_h then (
+        let P_i = mult(SK_i, P) in
+        let expected_m = add(mult(nonce_to_exp(D1), P), 
+                             mult(hash_to_exp(recv_h), P_i)) in
+        
+        if recv_m = expected_m then (
+          new D2: nonce;
+          new y: exponent;
+          
+          let sum2 = add_exponents(y, SK_j_val) in
+          let A2 = mult(sum2, P) in
+          
+          let shared_secret = mult(sum2, A1) in
+          let key_input = concat(concat(concat(concat(
+                               bitstring_of_point(shared_secret),
+                               bitstring_of_nonce(D1)),
+                               bitstring_of_id(recv_ID_i)),
+                               bitstring_of_nonce(D2)),
+                               bitstring_of_id(ID_j)) in
+          let session_key = H(key_input) in
+          
+          let hbar_input = concat(concat(concat(concat(
+                                bitstring_of_nonce(D1),
+                                bitstring_of_id(recv_ID_i)),
+                                bitstring_of_point(A2)),
+                                bitstring_of_hash(session_key)),
+                                bitstring_of_point(V)) in
+          let hbar = H(hbar_input) in
+          
+          let h3_input = concat(bitstring_of_id(recv_ID_i), bitstring_of_point(V)) in
+          let h3_val = H(h3_input) in
+          let plain2 = concat(bitstring_of_point(A2), bitstring_of_nonce(D2)) in
+          let C2 = xor(bitstring_of_hash(h3_val), plain2) in
+          
+          out(c, (hbar, C2));
+          
+          event endSP(ID_j, recv_ID_i);
+          event sessionKeyEstablished(recv_ID_i, ID_j, hash_to_key(session_key))
+        ) else (
+          event impersonationAttempt(recv_ID_i);
+          out(c, failure)
+        )
+      ) else (
+        event replayAttackDetected;
+        out(c, failure)
+      )
+    )
+  else
+    out(c, failure).
+
+(* ==================== ATTACK PROCESSES ==================== *)
+
+let PassiveEavesdropper =
+  in(c, (m: point, C1: bitstring, h: hash));
+  out(c, (m, C1, h));
+  in(c, (hbar: hash, C2: bitstring));
+  out(c, (hbar, C2)).
+  
+let MITMAttacker =
+  in(c, (m: point, C1: bitstring, h: hash));
+  new fake_m: point;
+  new fake_C1: bitstring;
+  out(c, (fake_m, fake_C1, h));
+  
+  in(c, (hbar: hash, C2: bitstring));
+  new fake_hbar: hash;
+  new fake_C2: bitstring;
+  out(c, (fake_hbar, fake_C2)).
+
+let ReplayAttacker =
+  in(c, (m: point, C1: bitstring, h: hash));
+  out(c, (m, C1, h));
+  
+  in(c, (hbar: hash, C2: bitstring));
+  out(c, (hbar, C2)).
+
+let FakeSmartMeter =
+  new fake_D1: nonce;
+  new fake_x: exponent;
+  let fake_A1 = mult(fake_x, P) in
+  let fake_h = H(concat(concat(bitstring_of_nonce(fake_D1), 
+                               bitstring_of_id(ID_j)), 
+                        bitstring_of_point(fake_A1))) in
+  let fake_m = add(mult(nonce_to_exp(fake_D1), P), 
+                   mult(hash_to_exp(fake_h), mult(SK_i, P))) in
+  let fake_V = mult(nonce_to_exp(fake_D1), mult(SK_j, P)) in
+  let fake_C1 = xor(bitstring_of_hash(H(concat(bitstring_of_id(ID_j), 
+                                               bitstring_of_point(fake_V)))),
+                    concat(concat(bitstring_of_id(ID_i),
+                                  bitstring_of_point(fake_A1)),
+                           bitstring_of_nonce(fake_D1))) in
+  out(c, (fake_m, fake_C1, fake_h)).
+
+let FakeServiceProvider =
+  in(c, (m: point, C1: bitstring, h: hash));
+  new fake_D2: nonce;
+  new fake_y: exponent;
+  let fake_A2 = mult(fake_y, P) in
+  let empty_string: bitstring = bitstring_of_id(ID_i) in
+  let fake_hbar = H(concat(concat(concat(concat(
+                          bitstring_of_nonce(fake_D2),
+                          bitstring_of_id(ID_i)),
+                          bitstring_of_point(fake_A2)),
+                          empty_string),
+                          empty_string)) in
+  let fake_C2 = xor(empty_string, concat(bitstring_of_point(fake_A2), 
+                                 bitstring_of_nonce(fake_D2))) in
+  out(c, (fake_hbar, fake_C2)).
+
+(* ==================== SECURITY QUERIES ==================== *)
+
+query id: id, id2: id; 
+      inj-event(endSM(id, id2)) ==> inj-event(beginSM(id, id2)).
+query id: id, id2: id; 
+      inj-event(endSP(id, id2)) ==> inj-event(beginSP(id, id2)).
+
+free secret_session_key: key [private].
+query attacker(secret_session_key).
+
+query attacker(SK_i).
+query attacker(SK_j).
+query attacker(K).
+
+query id1: id, id2: id; 
+      event(endSM(id1, id2)) ==> event(endSP(id2, id1)).
+
+free past_session_key: key [private].
+query attacker(past_session_key).
+
+
+
+query id1: id, id2: id, k: key;
+      event(sessionKeyEstablished(id1, id2, k)) ==>
+      event(sessionKeyEstablished(id2, id1, k)).
+
+(* ==================== MAIN PROCESS ==================== *)
+process 
+  out(c, P_pub);
+  (
+    TA
+  )
+  |
+  (
+    !SmartMeter
+    |
+    !ServiceProvider
+    |
+    PassiveEavesdropper
+    |
+    MITMAttacker
+    |
+    ReplayAttacker
+    |
+    FakeSmartMeter
+    |
+    FakeServiceProvider
+  )
