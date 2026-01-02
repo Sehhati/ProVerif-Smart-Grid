@@ -353,8 +353,6 @@ query id1: id, id2: id;
 free past_session_key: key [private].
 query attacker(past_session_key).
 
-
-
 query id1: id, id2: id, k: key;
       event(sessionKeyEstablished(id1, id2, k)) ==>
       event(sessionKeyEstablished(id2, id1, k)).
@@ -381,3 +379,4 @@ process
     |
     FakeServiceProvider
   )
+
